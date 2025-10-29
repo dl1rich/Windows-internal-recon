@@ -19,6 +19,9 @@ Connect-AzureAD -AccountId richard.jones@incorp.asia
 
 # Or with AADInternals
 Get-AADIntAccessTokenForAADGraph -UserName "richard.jones@incorp.asia"
+
+# Verify connection
+Get-AzureADCurrentSessionInfo
 ```
 
 ## Setup creds windows secure password. 
