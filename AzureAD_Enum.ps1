@@ -34,8 +34,13 @@ try {
 Write-Host ""
 
 # Get current user info
-$currentUser = (Get-AzureADCurrentSessionInfo).Account.Id
-Write-Host "[+] Connected as: $currentUser" -ForegroundColor Green
+try {
+    $currentUser = (Get-AzureADCurrentSessionInfo).Account.Id
+    Write-Host "[+] Connected as: $currentUser" -ForegroundColor Green
+} catch {
+    $currentUser = "Unknown"
+    Write-Host "[-] Could not get current user info" -ForegroundColor Yellow
+}
 Write-Host ""
 
 # Main report file
@@ -76,7 +81,7 @@ function Save-Report {
             # Add summary to main report
             "$Title - Count: $($data.Count)" | Out-File $mainReport -Append
             
-            Write-Host "    [✓] Saved: $($data.Count) items" -ForegroundColor Green
+            Write-Host "    [+] Saved: $($data.Count) items" -ForegroundColor Green
         } else {
             "No data found for $Title" | Out-File "$filePath.txt"
             Write-Host "    [!] No data found" -ForegroundColor Yellow
@@ -97,8 +102,18 @@ Save-Report -Title "Tenant Details" -FileName "02_Tenant_Details" -Command {
     Get-AzureADTenantDetail
 }
 
-Save-Report -Title "Company Information" -FileName "03_Company_Info" -Command {
-    Get-MsolCompanyInformation
+# Only try to get company information if MSOnline is available
+if (Get-Module -ListAvailable -Name MSOnline) {
+    Save-Report -Title "Company Information" -FileName "03_Company_Info" -Command {
+        try {
+            Get-MsolCompanyInformation
+        } catch {
+            Write-Warning "MSOnline module available but Get-MsolCompanyInformation failed: $_"
+            @()
+        }
+    }
+} else {
+    Write-Host "[!] MSOnline module not available - skipping company information" -ForegroundColor Yellow
 }
 
 # 3. All users
@@ -116,14 +131,18 @@ Save-Report -Title "Privileged Users" -FileName "06_Privileged_Users" -Command {
     $privilegedUsers = @()
     Get-AzureADDirectoryRole | ForEach-Object {
         $role = $_
-        Get-AzureADDirectoryRoleMember -ObjectId $_.ObjectId | ForEach-Object {
-            $privilegedUsers += [PSCustomObject]@{
-                Role = $role.DisplayName
-                DisplayName = $_.DisplayName
-                UserPrincipalName = $_.UserPrincipalName
-                ObjectId = $_.ObjectId
-                ObjectType = $_.ObjectType
+        try {
+            Get-AzureADDirectoryRoleMember -ObjectId $_.ObjectId | ForEach-Object {
+                $privilegedUsers += [PSCustomObject]@{
+                    Role = $role.DisplayName
+                    DisplayName = $_.DisplayName
+                    UserPrincipalName = $_.UserPrincipalName
+                    ObjectId = $_.ObjectId
+                    ObjectType = $_.ObjectType
+                }
             }
+        } catch {
+            Write-Warning "Could not get members for role: $($role.DisplayName)"
         }
     }
     $privilegedUsers
@@ -135,8 +154,17 @@ Save-Report -Title "All Devices" -FileName "07_All_Devices" -Command {
 }
 
 # 7. MFA Status
-Save-Report -Title "MFA Status" -FileName "08_MFA_Status" -Command {
-    Get-MsolUser -All | Select-Object DisplayName, UserPrincipalName, @{N="MFA Status"; E={if($_.StrongAuthenticationRequirements.State){$_.StrongAuthenticationRequirements.State}else{"Disabled"}}}, BlockCredential, IsLicensed, LastPasswordChangeTimestamp
+if (Get-Module -ListAvailable -Name MSOnline) {
+    Save-Report -Title "MFA Status" -FileName "08_MFA_Status" -Command {
+        try {
+            Get-MsolUser -All | Select-Object DisplayName, UserPrincipalName, @{Name="MFA Status"; Expression={if($_.StrongAuthenticationRequirements.State){$_.StrongAuthenticationRequirements.State}else{"Disabled"}}}, BlockCredential, IsLicensed, LastPasswordChangeTimestamp
+        } catch {
+            Write-Warning "MSOnline module available but Get-MsolUser failed: $_"
+            @()
+        }
+    }
+} else {
+    Write-Host "[!] MSOnline module not available - skipping MFA status check" -ForegroundColor Yellow
 }
 
 # 8. Conditional Access Policies
@@ -159,13 +187,17 @@ Save-Report -Title "Service Principal Permissions" -FileName "12_SP_Permissions"
     $spPermissions = @()
     Get-AzureADServicePrincipal -All $true | ForEach-Object {
         $sp = $_
-        Get-AzureADServiceAppRoleAssignment -ObjectId $_.ObjectId -ErrorAction SilentlyContinue | ForEach-Object {
-            $spPermissions += [PSCustomObject]@{
-                ServicePrincipal = $sp.DisplayName
-                PrincipalDisplayName = $_.PrincipalDisplayName
-                ResourceDisplayName = $_.ResourceDisplayName
-                Id = $_.Id
+        try {
+            Get-AzureADServiceAppRoleAssignment -ObjectId $_.ObjectId -ErrorAction SilentlyContinue | ForEach-Object {
+                $spPermissions += [PSCustomObject]@{
+                    ServicePrincipal = $sp.DisplayName
+                    PrincipalDisplayName = $_.PrincipalDisplayName
+                    ResourceDisplayName = $_.ResourceDisplayName
+                    Id = $_.Id
+                }
             }
+        } catch {
+            Write-Warning "Could not get permissions for SP: $($sp.DisplayName)"
         }
     }
     $spPermissions
@@ -193,23 +225,36 @@ Save-Report -Title "OAuth2 Permission Grants" -FileName "16_OAuth_Permissions" -
 
 # 16. Group Memberships for Current User
 Save-Report -Title "Your Group Memberships" -FileName "17_Your_Groups" -Command {
-    $me = Get-AzureADUser -ObjectId $currentUser
-    Get-AzureADUserMembership -ObjectId $me.ObjectId | Select-Object DisplayName, Description, ObjectId, SecurityEnabled
+    try {
+        $me = Get-AzureADUser -ObjectId $currentUser
+        Get-AzureADUserMembership -ObjectId $me.ObjectId | Select-Object DisplayName, Description, ObjectId, SecurityEnabled
+    } catch {
+        Write-Warning "Could not get group memberships for current user"
+        @()
+    }
 }
 
 # 17. Your Directory Roles
 Save-Report -Title "Your Directory Roles" -FileName "18_Your_Roles" -Command {
     $yourRoles = @()
-    Get-AzureADDirectoryRole | ForEach-Object {
-        $role = $_
-        $members = Get-AzureADDirectoryRoleMember -ObjectId $role.ObjectId
-        if ($members.UserPrincipalName -contains $currentUser) {
-            $yourRoles += [PSCustomObject]@{
-                RoleName = $role.DisplayName
-                RoleDescription = $role.Description
-                ObjectId = $role.ObjectId
+    try {
+        Get-AzureADDirectoryRole | ForEach-Object {
+            $role = $_
+            try {
+                $members = Get-AzureADDirectoryRoleMember -ObjectId $role.ObjectId
+                if ($members.UserPrincipalName -contains $currentUser) {
+                    $yourRoles += [PSCustomObject]@{
+                        RoleName = $role.DisplayName
+                        RoleDescription = $role.Description
+                        ObjectId = $role.ObjectId
+                    }
+                }
+            } catch {
+                Write-Warning "Could not get members for role: $($role.DisplayName)"
             }
         }
+    } catch {
+        Write-Warning "Could not enumerate directory roles"
     }
     $yourRoles
 }
@@ -247,8 +292,12 @@ try {
 } catch {}
 
 try { 
-    $noMFACount = (Get-MsolUser -All | Where-Object {!$_.StrongAuthenticationRequirements.State}).Count
-    "Users without MFA: $noMFACount" | Out-File $mainReport -Append
+    if (Get-Module -ListAvailable -Name MSOnline) {
+        $noMFACount = (Get-MsolUser -All | Where-Object {!$_.StrongAuthenticationRequirements.State}).Count
+        "Users without MFA: $noMFACount" | Out-File $mainReport -Append
+    } else {
+        "Users without MFA: MSOnline module not available" | Out-File $mainReport -Append
+    }
 } catch {}
 
 try { 
