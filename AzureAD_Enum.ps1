@@ -42,7 +42,7 @@ Write-Host ""
 $mainReport = Join-Path $outputDir "00_Executive_Summary.txt"
 
 # Start main report
-@"
+$reportHeader = @"
 ========================================
 AZURE AD PENETRATION TEST REPORT
 ========================================
@@ -51,7 +51,8 @@ Tested By: $currentUser
 Target Tenant: $(try{(Get-AzureADTenantDetail).DisplayName}catch{"Unknown"})
 ========================================
 
-"@ | Out-File $mainReport
+"@
+$reportHeader | Out-File $mainReport
 
 # Function to log and save
 function Save-Report {
@@ -217,23 +218,43 @@ Save-Report -Title "Your Directory Roles" -FileName "18_Your_Roles" -Command {
 Write-Host ""
 Write-Host "[*] Generating summary..." -ForegroundColor Cyan
 
-$summaryStats = @"
+$summaryHeader = "`n========================================`nSUMMARY STATISTICS`n========================================`n`n"
+$summaryHeader | Out-File $mainReport -Append
 
-========================================
-SUMMARY STATISTICS
-========================================
+try { 
+    $userCount = (Get-AzureADUser -All $true).Count
+    "Total Users: $userCount" | Out-File $mainReport -Append
+} catch {}
 
-"@
+try { 
+    $groupCount = (Get-AzureADGroup -All $true).Count
+    "Total Groups: $groupCount" | Out-File $mainReport -Append
+} catch {}
 
-try { $summaryStats += "Total Users: $((Get-AzureADUser -All $true).Count)`n" } catch {}
-try { $summaryStats += "Total Groups: $((Get-AzureADGroup -All $true).Count)`n" } catch {}
-try { $summaryStats += "Total Devices: $((Get-AzureADDevice -All $true).Count)`n" } catch {}
-try { $summaryStats += "Total Service Principals: $((Get-AzureADServicePrincipal -All $true).Count)`n" } catch {}
-try { $summaryStats += "Total Applications: $((Get-AzureADApplication -All $true).Count)`n" } catch {}
-try { $summaryStats += "Users without MFA: $((Get-MsolUser -All | Where-Object {!$_.StrongAuthenticationRequirements.State}).Count)`n" } catch {}
-try { $summaryStats += "Guest Users: $((Get-AzureADUser -All $true -Filter 'UserType eq ''Guest''').Count)`n" } catch {}
+try { 
+    $deviceCount = (Get-AzureADDevice -All $true).Count
+    "Total Devices: $deviceCount" | Out-File $mainReport -Append
+} catch {}
 
-$summaryStats | Out-File $mainReport -Append
+try { 
+    $spCount = (Get-AzureADServicePrincipal -All $true).Count
+    "Total Service Principals: $spCount" | Out-File $mainReport -Append
+} catch {}
+
+try { 
+    $appCount = (Get-AzureADApplication -All $true).Count
+    "Total Applications: $appCount" | Out-File $mainReport -Append
+} catch {}
+
+try { 
+    $noMFACount = (Get-MsolUser -All | Where-Object {!$_.StrongAuthenticationRequirements.State}).Count
+    "Users without MFA: $noMFACount" | Out-File $mainReport -Append
+} catch {}
+
+try { 
+    $guestCount = (Get-AzureADUser -All $true -Filter "UserType eq 'Guest'").Count
+    "Guest Users: $guestCount" | Out-File $mainReport -Append
+} catch {}
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
