@@ -1,5 +1,11 @@
 # Windows testing
 
+## test
+
+```
+https://login.microsoftonline.com/getuserrealm.srf?login=richard.jones@incorp.asia&xml=1
+```
+
 ## Initial Reconnaissance
 ```
 Install-Module -Name Az -AllowClobber -Scope CurrentUser
