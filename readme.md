@@ -11,6 +11,16 @@ Install-Module -Name AADInternals -Scope CurrentUser
 pip install roadrecon
 ```
 
+## MFA login
+```powershell
+# Device code flow (browser-based)
+Connect-AzureAD -AccountId richard.jones@incorp.asia
+# Follow the browser prompt
+
+# Or with AADInternals
+Get-AADIntAccessTokenForAADGraph -UserName "richard.jones@incorp.asia"
+```
+
 ## Setup creds windows secure password. 
 ```powershell
 # Method 1: Azure AD Module (recommended for enumeration)
