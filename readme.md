@@ -11,6 +11,22 @@ Install-Module -Name AADInternals -Scope CurrentUser
 pip install roadrecon
 ```
 
+## Setup creds windows secure password. 
+```powershell
+# Method 1: Azure AD Module (recommended for enumeration)
+Install-Module AzureAD -Scope CurrentUser
+Import-Module AzureAD
+
+$username = "richard.jones@incorp.asia"
+$password = ConvertTo-SecureString "YourPasswordHere" -AsPlainText -Force
+$cred = New-Object System.Management.Automation.PSCredential($username, $password)
+
+Connect-AzureAD -Credential $cred
+
+# Verify connection
+Get-AzureADCurrentSessionInfo
+```
+
 ## Enumeration Without Credentials
 ```powershell
 
