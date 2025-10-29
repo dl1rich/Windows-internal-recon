@@ -1,6 +1,41 @@
 # Azure AD Enumeration Report Generator
 # Creates timestamped reports with all enumeration data
 
+# Function to check and install required modules
+function Install-RequiredModules {
+    $requiredModules = @('AzureAD', 'MSOnline')
+    $missingModules = @()
+    
+    foreach ($module in $requiredModules) {
+        if (!(Get-Module -ListAvailable -Name $module)) {
+            $missingModules += $module
+        }
+    }
+    
+    if ($missingModules.Count -gt 0) {
+        Write-Host "[!] WARNING: Missing required modules: $($missingModules -join ', ')" -ForegroundColor Yellow
+        Write-Host "[*] These modules are needed for full Azure AD enumeration capabilities" -ForegroundColor Yellow
+        
+        $install = Read-Host "Would you like to install missing modules? (y/N)"
+        if ($install -eq 'y' -or $install -eq 'Y') {
+            foreach ($module in $missingModules) {
+                try {
+                    Write-Host "[*] Installing module: $module..." -ForegroundColor Cyan
+                    Install-Module -Name $module -Force -AllowClobber -Scope CurrentUser
+                    Write-Host "[+] Successfully installed: $module" -ForegroundColor Green
+                } catch {
+                    Write-Host "[-] Failed to install $module : $_" -ForegroundColor Red
+                }
+            }
+        } else {
+            Write-Host "[!] Continuing without missing modules - some features may not work" -ForegroundColor Yellow
+        }
+    }
+}
+
+# Check and install required modules
+Install-RequiredModules
+
 # Create output directory
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $outputDir = "AzureAD_Report_$timestamp"
@@ -10,25 +45,47 @@ Write-Host "[*] Starting Azure AD enumeration..." -ForegroundColor Cyan
 Write-Host "[*] Output directory: $outputDir" -ForegroundColor Cyan
 Write-Host ""
 
-# Connect to Azure AD
-Write-Host "[*] Connecting to Azure AD..." -ForegroundColor Yellow
-Write-Host "    (Use your credentials in the popup - supports MFA)" -ForegroundColor Yellow
+# Check if already connected to Azure AD
+$azureADConnected = $false
 try {
-    Connect-AzureAD -ErrorAction Stop
-    Write-Host "[+] Connected to Azure AD" -ForegroundColor Green
+    $sessionInfo = Get-AzureADCurrentSessionInfo -ErrorAction Stop
+    if ($sessionInfo) {
+        Write-Host "[+] Already connected to Azure AD as: $($sessionInfo.Account.Id)" -ForegroundColor Green
+        $azureADConnected = $true
+    }
 } catch {
-    Write-Host "[-] Failed to connect to Azure AD: $_" -ForegroundColor Red
-    exit
+    # Not connected, will need to connect
 }
 
-# Connect to MSOnline
-Write-Host "[*] Connecting to MSOnline..." -ForegroundColor Yellow
-Write-Host "    (Use your credentials in the popup - supports MFA)" -ForegroundColor Yellow
-try {
-    Connect-MsolService -ErrorAction Stop
-    Write-Host "[+] Connected to MSOnline" -ForegroundColor Green
-} catch {
-    Write-Host "[-] Failed to connect to MSOnline (some features may not work): $_" -ForegroundColor Yellow
+# Connect to Azure AD only if not already connected
+if (-not $azureADConnected) {
+    Write-Host "[*] Connecting to Azure AD..." -ForegroundColor Yellow
+    Write-Host "    (Use your credentials in the popup - supports MFA)" -ForegroundColor Yellow
+    try {
+        Connect-AzureAD -ErrorAction Stop
+        Write-Host "[+] Connected to Azure AD" -ForegroundColor Green
+    } catch {
+        Write-Host "[-] Failed to connect to Azure AD: $_" -ForegroundColor Red
+        exit
+    }
+}
+
+# Check if already connected to MSOnline
+$msolConnected = $false
+if (Get-Module -ListAvailable -Name MSOnline) {
+    try {
+        $msolDomain = Get-MsolDomain -ErrorAction Stop | Select-Object -First 1
+        if ($msolDomain) {
+            Write-Host "[+] Already connected to MSOnline" -ForegroundColor Green
+            $msolConnected = $true
+        }
+    } catch {
+        # Not connected to MSOnline, but don't attempt connection due to auth issues
+        Write-Host "[!] MSOnline authentication not available - skipping MSOnline features" -ForegroundColor Yellow
+        Write-Host "    (This is normal for most Azure AD users - core enumeration will continue)" -ForegroundColor Gray
+    }
+} else {
+    Write-Host "[!] MSOnline module not available - skipping MSOnline connection" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -102,18 +159,13 @@ Save-Report -Title "Tenant Details" -FileName "02_Tenant_Details" -Command {
     Get-AzureADTenantDetail
 }
 
-# Only try to get company information if MSOnline is available
-if (Get-Module -ListAvailable -Name MSOnline) {
+# Only try to get company information if MSOnline is available and connected
+if ((Get-Module -ListAvailable -Name MSOnline) -and $msolConnected) {
     Save-Report -Title "Company Information" -FileName "03_Company_Info" -Command {
-        try {
-            Get-MsolCompanyInformation
-        } catch {
-            Write-Warning "MSOnline module available but Get-MsolCompanyInformation failed: $_"
-            @()
-        }
+        Get-MsolCompanyInformation
     }
 } else {
-    Write-Host "[!] MSOnline module not available - skipping company information" -ForegroundColor Yellow
+    Write-Host "[*] Skipping Company Information (requires MSOnline access)" -ForegroundColor Gray
 }
 
 # 3. All users
@@ -154,22 +206,26 @@ Save-Report -Title "All Devices" -FileName "07_All_Devices" -Command {
 }
 
 # 7. MFA Status
-if (Get-Module -ListAvailable -Name MSOnline) {
+if ((Get-Module -ListAvailable -Name MSOnline) -and $msolConnected) {
     Save-Report -Title "MFA Status" -FileName "08_MFA_Status" -Command {
-        try {
-            Get-MsolUser -All | Select-Object DisplayName, UserPrincipalName, @{Name="MFA Status"; Expression={if($_.StrongAuthenticationRequirements.State){$_.StrongAuthenticationRequirements.State}else{"Disabled"}}}, BlockCredential, IsLicensed, LastPasswordChangeTimestamp
-        } catch {
-            Write-Warning "MSOnline module available but Get-MsolUser failed: $_"
-            @()
-        }
+        Get-MsolUser -All | Select-Object DisplayName, UserPrincipalName, @{Name="MFA Status"; Expression={if($_.StrongAuthenticationRequirements.State){$_.StrongAuthenticationRequirements.State}else{"Disabled"}}}, BlockCredential, IsLicensed, LastPasswordChangeTimestamp
     }
 } else {
-    Write-Host "[!] MSOnline module not available - skipping MFA status check" -ForegroundColor Yellow
+    Write-Host "[*] Skipping MFA Status (requires MSOnline access)" -ForegroundColor Gray
 }
 
 # 8. Conditional Access Policies
 Save-Report -Title "Conditional Access Policies" -FileName "09_Conditional_Access" -Command {
-    Get-AzureADMSConditionalAccessPolicy | Select-Object DisplayName, State, Id, CreatedDateTime, ModifiedDateTime
+    try {
+        Get-AzureADMSConditionalAccessPolicy | Select-Object DisplayName, State, Id, CreatedDateTime, ModifiedDateTime
+    } catch {
+        if ($_.Exception.Message -like "*AccessDenied*" -or $_.Exception.Message -like "*does not have access*") {
+            Write-Host "    [*] Access denied - requires Security Reader or Admin role" -ForegroundColor Gray
+            @()
+        } else {
+            throw $_
+        }
+    }
 }
 
 # 9. Service Principals
@@ -292,11 +348,15 @@ try {
 } catch {}
 
 try { 
-    if (Get-Module -ListAvailable -Name MSOnline) {
-        $noMFACount = (Get-MsolUser -All | Where-Object {!$_.StrongAuthenticationRequirements.State}).Count
-        "Users without MFA: $noMFACount" | Out-File $mainReport -Append
+    if ((Get-Module -ListAvailable -Name MSOnline) -and $msolConnected) {
+        try {
+            $noMFACount = (Get-MsolUser -All | Where-Object {!$_.StrongAuthenticationRequirements.State}).Count
+            "Users without MFA: $noMFACount" | Out-File $mainReport -Append
+        } catch {
+            "Users without MFA: Unable to retrieve (MSOnline access denied)" | Out-File $mainReport -Append
+        }
     } else {
-        "Users without MFA: MSOnline module not available" | Out-File $mainReport -Append
+        "Users without MFA: MSOnline module not available or not connected" | Out-File $mainReport -Append
     }
 } catch {}
 
