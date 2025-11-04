@@ -20,11 +20,11 @@ pip install roadrecon
 ## MFA login
 ```powershell
 # Device code flow (browser-based)
-Connect-AzureAD -AccountId richard.jones@incorp.asia
+Connect-AzureAD -AccountId richard.jones@domain.com
 # Follow the browser prompt
 
 # Or with AADInternals
-Get-AADIntAccessTokenForAADGraph -UserName "richard.jones@incorp.asia"
+Get-AADIntAccessTokenForAADGraph -UserName "richard.jones@domain.com"
 
 # Verify connection
 Get-AzureADCurrentSessionInfo
@@ -36,7 +36,7 @@ Get-AzureADCurrentSessionInfo
 Install-Module AzureAD -Scope CurrentUser
 Import-Module AzureAD
 
-$username = "richard.jones@incorp.asia"
+$username = "richard.jones@domain.com"
 $password = ConvertTo-SecureString "YourPasswordHere" -AsPlainText -Force
 $cred = New-Object System.Management.Automation.PSCredential($username, $password)
 
