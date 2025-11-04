@@ -3,7 +3,7 @@
 ## test
 
 ```
-https://login.microsoftonline.com/getuserrealm.srf?login=richard.jones@incorp.asia&xml=1
+https://login.microsoftonline.com/getuserrealm.srf?login=richard.jones@DOMAINa&xml=1
 ```
 
 ## Initial Reconnaissance
